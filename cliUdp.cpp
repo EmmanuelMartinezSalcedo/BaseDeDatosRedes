@@ -25,6 +25,7 @@
 #include <cstring>
 #include <iomanip>
 #include <sstream>
+#include <fstream>
 
 #define PORT    8081
 #define MAXLINE 1000
@@ -32,7 +33,7 @@
 using namespace std;
 void initializePayload(char* payload, int size) 
 {
-    memset(payload, '_', size - 1);
+    memset(payload, '?', size - 1);
 }
 
 const char* createPayload(int payload_full_size, const char* query) 
@@ -43,7 +44,7 @@ const char* createPayload(int payload_full_size, const char* query)
     payload[payload_full_size - 1] = '\0';
     for (int i = 0; i < payload_full_size; ++i) {
         if (payload[i] == '\0') {
-            payload[i] = '_';
+            payload[i] = '?';
             break;
         }
     }
@@ -104,7 +105,7 @@ const char* createData(int payload_full_size, int data_size, const char* query, 
 const char* getPayload(const char* Data)
 {
     char numeroStr[5];
-    strncpy(numeroStr, Data + 11, 4);
+    strncpy(numeroStr, Data + 11, 4); //copia payloadsize
     numeroStr[4] = '\0';
 
     int numeroCaracteres = atoi(numeroStr);
@@ -191,26 +192,86 @@ int main()
 	const int payload_size = 975;
     const int data_size = 1000;
 	cout << "\nCommands:\nCreate: C <<Participant 1>> <<Participant 2>>\nRead:   R <<Participant>>\nUpdate: U <<Participant OLD>> <<Participant NEW>>\nDelete: D <<Participant>>\nMenu:   M\nQuit:   Q\n";
+
+    ifstream inputFile("Flavor_network2.txt");
+
+    if (!inputFile.is_open()) 
+    {
+        cerr << "Error al abrir el archivo de comandos." << endl;
+        return 1;
+    }
+
+    string line;
+    // while (getline(inputFile, line)) 
+    // {
+    //     const char* resultado = createData(payload_size, data_size, line.c_str(), sequenceNumber);
+
+    //     sendto(sockfd, resultado, strlen(resultado), MSG_CONFIRM, (const struct sockaddr *)&servaddr, sizeof(servaddr));
+
+    //     n = recvfrom(sockfd, buffer, MAXLINE, MSG_WAITALL, (struct sockaddr *)&servaddr, &len);
+    //     sequenceNumber++;
+
+    //     n = recvfrom(sockfd, buffer, MAXLINE, MSG_WAITALL, (struct sockaddr *)&servaddr, &len);
+    //     sequenceNumber++;
+
+    //     const char* ack = createACK(payload_size, data_size, sequenceNumber);
+    // }
+
+    // Cierra el archivo
+
 	while (1) {
 
         fgets(buffer, MAXLINE, stdin);
-		
-		const char* resultado = createData(payload_size, data_size, buffer, sequenceNumber);
+        
+        if (buffer[0] == 'i')
+        {
 
-        sendto(sockfd, resultado, strlen(resultado), MSG_CONFIRM, (const struct sockaddr *)&servaddr, sizeof(servaddr));
+            while (getline(inputFile, line)) 
+            {
 
-        n = recvfrom(sockfd, buffer, MAXLINE, MSG_WAITALL, (struct sockaddr *)&servaddr, &len);
-		sequenceNumber++;
-		
-		n = recvfrom(sockfd, buffer, MAXLINE, MSG_WAITALL, (struct sockaddr *)&servaddr, &len);
-		sequenceNumber++;
+                const char* resultado = createData(payload_size, data_size, line.c_str(), sequenceNumber);
 
-		const char* ack = createACK(payload_size, data_size, sequenceNumber);
+                sendto(sockfd, resultado, strlen(resultado), MSG_CONFIRM, (const struct sockaddr *)&servaddr, sizeof(servaddr));
 
-		sendto(sockfd, ack, strlen(ack), MSG_CONFIRM, (const struct sockaddr *)&servaddr, sizeof(servaddr));
-		sequenceNumber++;
+                n = recvfrom(sockfd, buffer, MAXLINE, MSG_WAITALL, (struct sockaddr *)&servaddr, &len);
+                sequenceNumber++;
 
-		cout << getPayload(buffer) << endl;
+                n = recvfrom(sockfd, buffer, MAXLINE, MSG_WAITALL, (struct sockaddr *)&servaddr, &len);
+                sequenceNumber++;
+
+                const char* ack = createACK(payload_size, data_size, sequenceNumber);
+            }
+            inputFile.close();
+        }
+        else
+        {
+            const char* resultado = createData(payload_size, data_size, buffer, sequenceNumber);
+
+            sendto(sockfd, resultado, strlen(resultado), MSG_CONFIRM, (const struct sockaddr *)&servaddr, sizeof(servaddr));
+            //  cout << "1. Sending query to server." << endl;
+            //cout << resultado;
+
+            n = recvfrom(sockfd, buffer, MAXLINE, MSG_WAITALL, (struct sockaddr *)&servaddr, &len);
+            // cout << "2. Receiving ACK from server." << endl;
+            sequenceNumber++;
+            
+            n = recvfrom(sockfd, buffer, MAXLINE, MSG_WAITALL, (struct sockaddr *)&servaddr, &len);
+            // cout << "7. Receiving response from server." << endl;
+            sequenceNumber++;
+            
+            //cout << getPayload(buffer) << endl;
+            //const char* ack = createACK(payload_size, data_size, sequenceNumber);
+
+            //sendto(sockfd, ack, strlen(ack), MSG_CONFIRM, (const struct sockaddr *)&servaddr, sizeof(servaddr));
+            //cout << "8. Sending ACK to server." << endl;
+            //sequenceNumber++;
+
+            cout << getPayload(buffer) << endl;
+            if (getPayload(buffer)[0] == 'Q')
+            {
+                break;
+            }
+        }
     }
 	close(sockfd);
 	return 0;

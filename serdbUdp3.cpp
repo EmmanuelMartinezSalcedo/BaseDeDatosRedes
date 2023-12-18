@@ -1,3 +1,5 @@
+#include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
 #include <sys/types.h>
@@ -21,7 +23,7 @@
 #include <sstream>
 
 
-#define PORT     9082
+#define PORT     8084
 #define MAXLINE  1000
 int sockfd;
 using namespace std;

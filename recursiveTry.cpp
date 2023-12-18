@@ -25,7 +25,7 @@
 #include <condition_variable>
 
 #define PORT 8081
-#define PORTSLAVE 9082
+#define PORTSLAVE 8082
 #define PORTSLAVE2 8083
 #define PORTSLAVE3 8084
 #define PORTSLAVE4 8085
@@ -40,6 +40,47 @@ using namespace std;
 mutex mtx;
 condition_variable cv;
 bool threadsFinished = false;
+
+struct Node {
+    string name;
+    set<string> connections;  // Conjunto de nodos conectados
+};
+
+// Clase que representa el grafo
+class Graph {
+private:
+    map<string, Node> nodes;  // Mapa que asocia el nombre de un nodo con su información
+
+public:
+    // Función para agregar una conexión entre dos nodos
+    void addConnection(const string& node1, const string& node2) {
+        nodes[node1].name = node1;  // Crea el nodo si no existe
+        nodes[node2].name = node2;  // Crea el nodo si no existe
+
+        nodes[node1].connections.insert(node2);  // Agrega la conexión
+    }
+
+    // Función privada auxiliar para imprimir conexiones recursivamente
+    string printConnectionsRecursive(const string& nodeName, int depth, int maxDepth) const {
+        stringstream resultStream;
+        auto it = nodes.find(nodeName);
+        if (it != nodes.end()) {
+            resultStream << string(depth * 4, ' ') << it->first << "\n";
+            if (depth < maxDepth) {
+                for (const auto& connection : it->second.connections) {
+                    resultStream << printConnectionsRecursive(connection, depth + 1, maxDepth);
+                }
+            }
+        }
+        return resultStream.str();
+    }
+
+    // Función para imprimir las conexiones de un nodo con recursión limitada
+    string printConnections(const string& nodeName, int recursionDepth) const {
+        return printConnectionsRecursive(nodeName, 0, recursionDepth);
+    }
+
+};
 
 void initializePayload(char* payload, int size) 
 {
@@ -191,7 +232,7 @@ const char* createPayload(int payload_full_size, const char* query)
     char* payload = new char[payload_full_size];
     initializePayload(payload, payload_full_size);
     char* query_payload = getPayload(query);
-    //char* msg = new char[payload_full_size];
+    char* msg = new char[payload_full_size];
     if (VerifyCheckSum(query_payload, query) == 0)
     {
         strncpy(payload, createErrorChecksum(), 23);
@@ -252,19 +293,17 @@ const char* createPayload(int payload_full_size, const char* query)
             char c[1];
             sscanf(query_payload, "%s %s %s", a, b, c);
             
+            
             int participantSize = 3;
             int Bsize = strlen(b);
             int Csize = strlen(c);
             char* Bs = new char[participantSize];
             formatNumber(Bsize, participantSize, Bs);
 
-            char* Cs = new char[participantSize];
-            formatNumber(Csize, participantSize, Cs);
-
             strcpy(payload, "R");
             strncat(payload, Bs, participantSize);
             strncat(payload, b, Bsize);
-            strncat(payload, "1", 1);
+            strncat(payload, c, Csize);
         }
     }
     else if (query_payload[0] == 'U' || query_payload[0] == 'u') 
@@ -366,7 +405,57 @@ char* createData(int payload_full_size, int data_size, const char* query, int se
 
     return data;
 }
+char* createReadRData(int payload_full_size, int data_size, const string& node, int sequenceNumber, int recursividad)
+{
+    int queryS_size = 3;
+    int querySize = node.size() + 1;
+    char* queryS = new char[queryS_size];
+    formatNumber(querySize, queryS_size, queryS);
+    
+    char* payloadx = new char[payload_full_size];
+    initializePayload(payloadx, payload_full_size);
 
+    string payload(payloadx);
+    payload = "R" + string(queryS) + node + to_string(recursividad);
+
+    payload[payload_full_size - 1] = '\0';
+    for (int i = 0; i < payload_full_size; ++i) {
+        if (payload[i] == '\0') {
+            payload[i] = '?';
+            break;
+        }
+    }
+
+
+    int seqN_size = 10;
+    char* seqN = new char[seqN_size];
+    formatNumber(sequenceNumber, seqN_size, seqN);
+
+    int payloadS_size = 4;
+    int payloadSize = 0;
+    int i = 0;
+    while (payload[i] != '?')
+    {
+        payloadSize++;
+        i++;
+    }
+    char* payloadS = new char[payloadS_size];
+    formatNumber(payloadSize, payloadS_size, payloadS);
+
+    int checkS_size = 10;
+    int checkSumValue = calculateCheckSum(payload.c_str());
+    char* checkS = new char[checkS_size];
+    formatNumber(checkSumValue, checkS_size, checkS);
+
+    char* data = new char[data_size];
+    strcpy(data, "D");
+    strncat(data, seqN, seqN_size);
+    strncat(data, payloadS, payloadS_size);
+    strncat(data, payload.c_str(), payload_full_size);
+    strncat(data, checkS, checkS_size);
+
+    return data;
+}
 const char* createACK(int payload_full_size, int data_size, int sequenceNumber)
 {
     char* payload = new char[payload_full_size];
@@ -405,19 +494,19 @@ void processClient(struct sockaddr_in cliaddrSocket, int& n, unsigned int& len, 
 
     sendto(sockfd, ack, strlen(ack), MSG_CONFIRM, (const struct sockaddr*)&cliaddrSocket, len);
     sequenceNumber++;
-    //cout << "2. Sending ACK to client" << endl;
+    cout << "2. Sending ACK to client" << endl;
 
     if (resultado[15] == 'C' || resultado[15] == 'c' || resultado[15] == 'R' || resultado[15] == 'r' ||
         resultado[15] == 'U' || resultado[15] == 'u' || resultado[15] == 'D' || resultado[15] == 'd')
     {
-        //cout << resultado << endl;
+        // cout << resultado << endl;
         buffer.assign(resultado, resultado + data_size);
     }
     else
     {
         sendto(sockfd, resultado, strlen(resultado), MSG_CONFIRM, (const struct sockaddr*)&cliaddrSocket, len);
         sequenceNumber++;
-        // cout << "3. Sending Error/Menu/Quit to client" << endl;
+        cout << "3. Sending Error/Menu/Quit to client" << endl;
 
         //n = recvfrom(sockfd, buffer.data(), MAXLINE, MSG_WAITALL, (struct sockaddr*)&cliaddrSocket, &len);
         //cout << "4. Receiving ACK from client" << endl;
@@ -430,32 +519,40 @@ void processClient(struct sockaddr_in cliaddrSocket, int& n, unsigned int& len, 
     cv.notify_one();
 }
 
+
+Graph tempGraph; 
+
 void processSlave(const struct sockaddr_in slaveaddr, struct sockaddr_in cliaddrSocket, int n, unsigned int len, string& buffer, const int payload_size, const int data_size, int sockfdSlave) {
     int sequenceNumber = 1;
     sendto(sockfdSlave, buffer.data(), buffer.size(), MSG_CONFIRM, (const struct sockaddr *)&slaveaddr, len);
-    //cout << endl << buffer;
-    // cout << "3. Sending query to slave." << endl;
+    cout << "3. Sending query to slave." << endl;
 
     n = recvfrom(sockfdSlave, buffer.data(), MAXLINE, MSG_WAITALL, (struct sockaddr *) &slaveaddr, &len);
-    // cout << "4. Receiving ACK from slave." << endl;
+    cout << "4. Receiving ACK from slave." << endl;
 
     n = recvfrom(sockfdSlave, buffer.data(), MAXLINE, MSG_WAITALL, (struct sockaddr *) &slaveaddr, &len);
-    // cout << "5. Receiving response from slave." << endl;
+    cout << "5. Receiving response from slave." << endl;
 
     const char* ack = createACK(payload_size, data_size, sequenceNumber);
 
     sendto(sockfdSlave, ack, strlen(ack), MSG_CONFIRM, (const struct sockaddr*)&slaveaddr, len);
-    // cout << "6. Sending ACK to slave." << endl;
+    cout << "6. Sending ACK to slave." << endl;
 
+    if (buffer[15] == 'R')
+    {
+    }
     sendto(sockfd, buffer.c_str(), buffer.length(), MSG_CONFIRM, (const struct sockaddr*)&cliaddrSocket, len);
-    // cout << "7. Sending response to client." << endl;
+    cout << "7. Sending response to client." << endl;
 
     //n = recvfrom(sockfd, buffer.data(), MAXLINE, MSG_WAITALL, (struct sockaddr*)&cliaddrSocket, &len);
     //cout << "8. Receiving ACK from client." << endl;
 }
 int getServer(string inputString) {
     // Obtén el número combinado desde la posición 16
-    string subString = inputString.substr(19,1);
+    int combinedNumber;
+    istringstream(inputString.substr(16, 3)) >> combinedNumber;
+
+    string subString = inputString.substr(19,combinedNumber);
 
     int resultChecksum = calculateCheckSum(subString.c_str());
 
@@ -569,7 +666,7 @@ int main()
     while (1)
     {
         n = recvfrom(sockfd, buffer.data(), MAXLINE, MSG_WAITALL, (struct sockaddr*)&cliaddr, &len);
-        // cout << "1. Receiving query from client." << endl;
+        cout << "1. Receiving query from client." << endl;
 
         buffer.resize(n);
 
@@ -585,30 +682,29 @@ int main()
             buffer[15] == 'U' || buffer[15] == 'u' || buffer[15] == 'D' || buffer[15] == 'd')
         {
             int selectedServer = getServer(buffer);
-            if (selectedServer == 1 /*|| selectedServer == 2*/)
+            if (selectedServer == 1)
             {
                 thread(processSlave, servSlaveaddr, cliaddr, n, len, ref(buffer), payload_size, data_size, sockfdSlave).detach();
-                //thread(processSlave, servSlaveaddr2, cliaddr, n, len, ref(buffer), payload_size, data_size, sockfdSlave2).detach();
             }
-            if (selectedServer == 2 /*|| selectedServer == 3*/)
+            else if (selectedServer == 2)
             {
                 thread(processSlave, servSlaveaddr2, cliaddr, n, len, ref(buffer), payload_size, data_size, sockfdSlave2).detach();
-                //thread(processSlave, servSlaveaddr3, cliaddr, n, len, ref(buffer), payload_size, data_size, sockfdSlave3).detach();
             }
-            if (selectedServer == 3 /*|| selectedServer == 0*/)
+            else if (selectedServer == 3)
             {
                 thread(processSlave, servSlaveaddr3, cliaddr, n, len, ref(buffer), payload_size, data_size, sockfdSlave3).detach();
-                //thread(processSlave, servSlaveaddr4, cliaddr, n, len, ref(buffer), payload_size, data_size, sockfdSlave4).detach();
             }
-            if (selectedServer == 0 /*|| selectedServer == 1*/)
+            else
             {
                 thread(processSlave, servSlaveaddr4, cliaddr, n, len, ref(buffer), payload_size, data_size, sockfdSlave4).detach();
-                //thread(processSlave, servSlaveaddr, cliaddr, n, len, ref(buffer), payload_size, data_size, sockfdSlave).detach();
             }
-            
         }
     }
 
     return 0;
 }
+//C P1 P2
+//R P NUMERO
+//U PO PN
+//D P
 
